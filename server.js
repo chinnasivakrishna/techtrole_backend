@@ -1,16 +1,13 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const bcrypt = require('bcrypt');
-const MSG91 = require('msg91');
 const dotenv = require('dotenv');
+const axios = require('axios');
 
 dotenv.config();
 
 const app = express();
 app.use(express.json());
-
-// Initialize MSG91
-const msg91 = new MSG91(process.env.MSG91_AUTH_KEY);
 
 // MongoDB Connection
 mongoose.connect(process.env.MONGODB_URI)
@@ -31,6 +28,31 @@ const User = mongoose.model('User', userSchema);
 // Store OTPs temporarily (in production, use Redis or similar)
 const otpStore = new Map();
 
+// Function to send OTP using MSG91 API
+async function sendOTP(phoneNumber, otp) {
+  try {
+    const url = `https://api.msg91.com/api/v5/flow/`;
+    const headers = {
+      'Content-Type': 'application/json',
+      'authkey': process.env.MSG91_AUTH_KEY
+    };
+    
+    const data = {
+      template_id: process.env.MSG91_TEMPLATE_ID,
+      sender: process.env.MSG91_SENDER_ID,
+      short_url: "0",
+      mobiles: phoneNumber,
+      VAR1: otp  // This will replace {{otp}} in your MSG91 template
+    };
+
+    const response = await axios.post(url, data, { headers });
+    return response.data;
+  } catch (error) {
+    console.error('MSG91 API Error:', error.response?.data || error.message);
+    throw error;
+  }
+}
+
 // Send OTP
 app.post('/api/auth/send-otp', async (req, res) => {
   try {
@@ -50,23 +72,15 @@ app.post('/api/auth/send-otp', async (req, res) => {
     });
 
     // Send OTP using MSG91
-    const options = {
-      mobileno: phoneNumber,
-      otp: otp,
-      template_id: process.env.MSG91_TEMPLATE_ID
-    };
-
-    msg91.send(options, function(err, response) {
-      if (err) {
-        console.error('MSG91 error:', err);
-        return res.status(500).json({ message: 'Failed to send OTP' });
-      }
-      res.json({ message: 'OTP sent successfully' });
-    });
+    await sendOTP(phoneNumber, otp);
+    res.json({ message: 'OTP sent successfully' });
 
   } catch (error) {
     console.error('Send OTP error:', error);
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ 
+      message: 'Failed to send OTP',
+      error: error.message 
+    });
   }
 });
 

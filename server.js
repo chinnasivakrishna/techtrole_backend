@@ -64,6 +64,12 @@ app.post('/api/auth/register', async (req, res) => {
   try {
     const { username, phoneNumber, password } = req.body;
 
+    // Validate input
+    if (!username || !phoneNumber || !password) {
+      return res.status(400).json({ message: 'All fields are required' });
+    }
+
+    // Check if user already exists
     const existingUser = await User.findOne({ 
       $or: [{ username }, { phoneNumber }] 
     });
@@ -74,8 +80,10 @@ app.post('/api/auth/register', async (req, res) => {
       });
     }
 
+    // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
+    // Create new user
     const user = new User({
       username,
       phoneNumber,
@@ -84,6 +92,7 @@ app.post('/api/auth/register', async (req, res) => {
 
     await user.save();
 
+    // Generate JWT token
     const token = jwt.sign(
       { userId: user._id },
       process.env.JWT_SECRET,
@@ -91,7 +100,7 @@ app.post('/api/auth/register', async (req, res) => {
     );
 
     res.status(201).json({
-      message: 'User registered successfully',
+      message: 'Registration successful',
       token,
       user: {
         username: user.username,
@@ -104,6 +113,7 @@ app.post('/api/auth/register', async (req, res) => {
     res.status(500).json({ message: 'Server error' });
   }
 });
+
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
